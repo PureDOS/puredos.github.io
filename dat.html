@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Pure DOS DAT View</title>
+<style>
+html, body, .indent, .divider { background: #345; color: #CDE; font-family: sans-serif; font-size: 12pt }
+table { border-collapse: collapse; margin: 3px 0 }
+tr { background: #012 }
+th { text-align: center; background: #123; color: #ABC }
+td, th { border: 1px solid black; padding: 4px; white-space: nowrap }
+a { color: #5AD; text-decoration: none }
+button, input { background: #123; color: #ABC }
+.unverified { background:#402 }
+.indent { padding: 3px 0 3px 20px !important; border: 0 }
+.indent .indent  { padding: 1.4px 0 1.4px 20px !important; border: 0 }
+.indent table { width: 100%; margin: 0 }
+.indent th, .indent td { padding: 2px; font-size: 9pt }
+.lf::after { content: "\240A"; color: #345 }
+.cr::after { content: "\21B4"; color: #345 }
+.file { background-color: #3454; display: inline-block; margin: 2px; padding: 3px; white-space: pre-wrap }
+.btnbox { cursor: pointer; color: #49C; background: #023; width: 20px; text-align: center }
+td button { width: 20px; height: 20px; padding: 0 }
+</style>
+</head>
+
+<body>
+<h3><a style="cursor:pointer" href="../"><u>Pure DOS</u></a> <a style="cursor:pointer" onclick="Focus()"><u>DAT Viewer</u></a></h3>
+<form style="margin-bottom:20px;display:none" id="frm">
+<input style="width:500px" id="qry">
+<button onclick="Find();return false">Find</button>
+<button onclick="Export();return false" id="cpy">Copy Results as XML DAT</button>
+</form>
+
+<div id="res"></div>
+
+<script type="text/javascript">
+//--------------------------------------------//
+// dos-pure-github-io                         //
+// License: Public Domain (www.unlicense.org) //
+//--------------------------------------------//
+
+var gebi = (id)=>document.getElementById(id), query, game, matches = [];
+(function()
+{
+	var urlqry;
+	try { urlqry = DecodeQry(document.location.search.substr(2)); } catch { }
+	if (urlqry) Lookup(urlqry);
+	if (!urlqry || !urlqry.match(/^.*\(\d\d\d\d\)/)) gebi('frm').style.display = '';
+})();
+
+function Focus()
+{
+	gebi('frm').style.display = '';
+	gebi('qry').focus();
+	gebi('qry').select();
+}
+
+function Find()
+{
+	document.location.search = "/"+EncodeQry(gebi('qry').value);
+}
+
+function Lookup(str)
+{
+	var ranges = [<<<RANGES>>>];
+	document.title += " - " + (gebi('qry').value = str);
+	query = str.toUpperCase();
+	var utf8Bytes = (new TextEncoder()).encode(query.substr(0, 4));
+	var n = (utf8Bytes[3] || 0) + ((utf8Bytes[2] || 0) * 256) + ((utf8Bytes[1] || 0) * 65536) + ((utf8Bytes[0] || 0) * 16777216);
+	var range = 0;
+	for (var i = 0; i != ranges.length; i++)
+	{
+		if (n >= ranges[i] && n < (ranges[i + 1] || 1179995213))
+		{
+			range = ranges[i];
+			break;
+		}
+	}
+	var scr = document.createElement('script');
+	scr.src = 'dat_' + range + '.js';
+	scr.async = true;
+	document.documentElement.appendChild(scr);
+}
+
+function EncodeQry(str)
+{
+	return encodeURI(str).replace(/\+/g, '%2B').replace(/\#/g, '%23').replace(/%20/g, '+');
+}
+
+function DecodeQry(str)
+{
+	return decodeURIComponent(str.replace(/&amp;/g, '&').replace(/\+/g, ' '));
+}
+
+function Escape(str, quot)
+{
+	return str.replace(quot ? /[&<>\"]/g : /[&<>]/g, function(m) { switch (m) { case '&': return '&amp;'; case '<': return '&lt;'; case '>': return '&gt;'; case '"': return '&quot;'; } });
+}
+
+function Toggle(td)
+{
+	var style = td.parentElement.nextSibling.style;
+	style.display = (style.display.length ? '' : 'none');
+	td.firstChild.innerText = (style.display.length ? '+' : '-');
+}
+
+document.OnDATData = function(data)
+{
+	var mqrybase = query.match(/^.*\(\d\d\d\d\)/), qry = (mqrybase ? mqrybase[0] : query);
+	for (const d of data)
+	{
+		if (d[0].toUpperCase().indexOf(qry) != 0) continue;
+		if (d[0].toUpperCase() == query) game = d;
+		else matches.push(d);
+	}
+
+	var res = "";
+	if (!game && matches.length == 0)
+		res += "<div style=\"margin-bottom:20px\"><b>No match starting with '" + Escape(query) + "'</b></div>";
+	else if (!game && query.length < 4 && matches[matches.length-1] == data[data.length-1])
+		res += "<div style=\"margin-bottom:20px\"><b>Search query '" + Escape(query) + "' with less than 4 characters with incomplete results</b></div>";
+
+	if (game)
+	{
+		let d = game, name = d[0], comment = d[1], comment_dosc = d[2], links = d[3], files = d[4], dosc = d[5], ext = d[6], unverified = d[7], nameUp = name.toUpperCase();
+		res += '<table style="min-width:1050px;margin-bottom:10px"><tr><td><center><b>' + Escape(name) + '</b></center</td><td class="btnbox" onclick="Export(1)" title="Click to copy as XML DAT">&#x2343;</td></tr></table>';
+
+		let TR_TD_FoldButton = '<tr><td onclick="Toggle(this)"><button>-</button> ';
+		let name_parts = name.match(/^(.*?) \((\d\d\d\d)\) \(([^\)]+)\)(?: \(([^\)]+)\)|)$/), parent, savename
+		let printname = (name_parts ? name_parts[1] : name).replace(/ - /, ": ").replace(/^(.*?), (The|An|A)/, '$2 $1');
+		for (const f of files) { if (f[0].match(/\.parent$/i)) { parent = f[0].slice(0, -12); } else if (f[0].match(/\.savename$/i)) { savename = f[0].slice(0, -9); } }
+		res += '<table style="min-width:1050px;margin-bottom:10px">';
+		res += TR_TD_FoldButton + 'Info</td></tr><tr><td class="indent"><table>';
+		if (unverified) res += '<tr><th colspan="2" class="unverified">UNVERIFIED</th></tr>';
+		res += '<tr><th width="10%">Name</th><td>'+Escape(printname)+'</td></tr>';
+		if (name_parts) res += '<tr><th>Year</th><td>'+name_parts[2]+'</td></tr>';
+		if (name_parts) res += '<tr><th>Developer</th><td>'+Escape(name_parts[3])+'</td></tr>';
+		if (name_parts && name_parts[4]) res += '<tr><th>Variant</th><td>'+Escape(name_parts[4])+'</td></tr>';
+		if (parent) res += '<tr><th>Parent</th><td><a href="?/'+Escape(parent,1)+'">'+Escape(parent)+'</a></td></tr>';
+		if (savename) res += '<tr><th>Savename</th><td>'+Escape(savename)+'</td></tr>';
+		if (comment) res += '<tr><th colspan="2">Description</th></tr><tr><td colspan="2" style="white-space:pre-wrap;width:1000px">'+Escape(comment)+'</td></tr>';
+		if (comment_dosc) res += '<tr><th colspan="2">DOSC Description</th></tr><tr><td colspan="2" style="white-space:pre-wrap;width:1000px">'+Escape(comment_dosc)+'</td></tr>';
+		res += '</table></td></tr></table>';
+
+		if (links)
+		{
+			res += '<table style="min-width:1050px;margin-bottom:10px">';
+			res += TR_TD_FoldButton + 'Links (' + links.length + ')</td></tr><tr><td class="indent"><table>'
+			res += '<tr><th>Type</th><th>URL</th></tr>';
+			for (const l of links)
+			{
+				const ltype = l[0], lurl = l[1], lname = l[2];
+				res += '<tr><td>' + Escape(ltype) + (lname ? ' (' + Escape(lname) + ')' : '') + '</td><td><a href="' + Escape(lurl, 1) + '" title="' + Escape(lurl, 1) + '" target="_blank">' + Escape(lurl.substr(0, 130)) + (lurl.length > 130 ? '&#8943;' : '') + '</a></td></tr>';
+			}
+			res += '</table></td></tr></table>';
+		}
+
+		for (let files_type = 0; files_type != 2; files_type++)
+		{
+			let fs = (files_type ? dosc : files), gotdate, gotdata;
+			if (!fs) continue;
+			for (const f of fs) { if (f[3]) { gotdate = true; if (gotdata) break; } if (f[11]) { gotdata = true; if (gotdate) break; } }
+			res += '<table style="min-width:1050px;margin-bottom:10px">';
+			res += TR_TD_FoldButton + (files_type ? 'DOSC' : (ext ? ext.toUpperCase() : 'DOSZ')) + ' File List (' + fs.length + ')' + (files_type ? '</td><td class="btnbox"><a href="https://raw.githubusercontent.com/PureDOS/DAT/main/' + (unverified ? 'unverified/' : '') + 'dosc/' + Escape(name, 1) + '.dosc" title="Click to download" style="display:block">&#11123;</a></td></tr><tr><td class="indent" colspan="2"><table>' : '</td></tr><tr><td class="indent"><table>')
+			res += '<tr><th>Name</th><th>Size</th><th>CRC32</th><th>MD5</th><th>SHA1</th>' + (gotdate ? '<th>Date/Time</th>' : '') + (gotdata ? '<th>&nbsp;</th><th>&nbsp;</th>' : '') + '</tr>';
+			for (const f of fs)
+			{
+				const fname = f[0], fsize = f[1], fyear = f[2], fmon = f[3], fday = f[4], fhour = f[5], fmin = f[6], fsec = f[7], fcrc = f[8], fmd5 = f[9], fsha1 = f[10], fdata = f[11], fmeta = f[12];
+				res += '<tr' + (fdata ? ' data-str="'+fdata+'"' : '') + '>'
+					+ '<td>' + Escape(fname) + '</td><td>' + fsize + '</td><td>' + (fsize ? fcrc + '</td><td>' + fmd5 + '</td><td>' + fsha1 : '&nbsp;</td><td>&nbsp;</td><td>&nbsp;') + '</td>'
+					+ (gotdate ? '<td>' + (fmon ? (new Date(Date.UTC(1900+fyear, fmon-1, fday, fhour, fmin, fsec))).toISOString().substr(0, 19).replace('T', ' ') : '&nbsp;') + '</td>' : '')
+					+ (gotdata ? (fdata ? '<td class="btnbox" onclick="View(this)" title="Click to view">&#9673;</td><td class="btnbox" onclick="Download(this)" title="Click to download">&#11123;</td>' : '<td>&nbsp;</td><td>&nbsp;</td>') : '')
+					+ '</tr>';
+				if (fmeta)
+				{
+					let m = Escape(fmeta).split("#"), t = m[0], isp = (t == 'P'), hdr = 
+						  t == 'S' ? ['Source Type', 'Frames', 'Pre-Gap', 'Omitted Pre-Gap', 'Duration', 'Size', 'CRC32', 'MD5', 'SHA1', 'In-Zeros', 'Out-Zeros', 'Quality', 'Has-Non-Silence-Pre-Gap' ]
+						: t == 'T' ? ['Track Number', 'Type', 'Frames', 'Pre-Gap', 'Omitted Pre-Gap', 'Duration', 'Size', 'CRC32', 'MD5', 'SHA1', 'In-Zeros', 'Out-Zeros', 'Trimmed-CRC32' ]
+						: t == 'P' ? ['Patch File', 'Source Size', 'Source CRC32', 'Source MD5', 'Source SHA1' ] : 0;
+					res += '<tr><td class="indent" colspan="100%"><table>';
+					res += '<tr><th>'+hdr.join("</th><th>")+'</th>'+(isp ? '<th>&nbsp;</th><th>&nbsp;</th>' : '')+'</tr>';
+					for (let i = 1; i < m.length; i += hdr.length )
+						res += (isp ? '<tr data-str="'+m[i]+'"><td>'+fname+'.'+(m[i].substr(0, 3) == 'UEF' ? 'IPS' : (m[i].substr(0, 3) == 'QlB' ? 'BPS' : 'BIN'))+'</td>' : '<tr>') + '<td>'+m.slice(i + isp, i + hdr.length).join("</td><td>")+'</td>'+(isp?'<td class="btnbox" onclick="View(this)" title="Click to view">&#9673;</td><td class="btnbox" onclick="Download(this)" title="Click to download">&#11123;</td>':'')+'</tr>';
+					res += '</table></td></tr>';
+				}
+			}
+			res += '</table></td></tr></table>';
+		}
+
+		if (matches.length)
+		{
+			res += '<table style="min-width:1050px;margin-bottom:10px">';
+			res += TR_TD_FoldButton + 'Related (' + matches.length + ')</td></tr><tr><td class="indent">';
+		}
+	}
+
+	for (let i = 0; i != matches.length; i++)
+	{
+		let d = matches[i], name = d[0], unverified = d[7];
+		res += '<table style="min-width:900px"><tr><td><b>Name: </b><a href="?/' + EncodeQry(name) + '">' + Escape(name) + '</a></td>' + (unverified ? '<td class="unverified" width="1">UNVERIFIED</td>' : '') + '</tr></table>';
+	}
+
+	if (game && matches.length) res += '</td></tr></table>';
+	gebi('res').innerHTML = res;
+	if (!game) gebi('frm').style.display = '';
+	if (!matches.length) gebi('cpy').style.display = 'none';
+};
+
+function ParsePatch(arr, toIPS)
+{
+	var i = 0, sz = arr.length, str = '';
+	function GetU8() { return arr[i++]|0; }
+	function GetU16() { return ((arr[i++] << 8) | arr[i++]); }
+	function GetU24() { return ((arr[i++] << 16) | (arr[i++] << 8) | arr[i++]); }
+	function BPSGetVarLenInt() { for (var x, shift = 1, res = 0;;) { x = arr[i++]; res += (x & 0x7f) * shift; if (x & 0x80) return res; res += (shift <<= 7); } }
+	function LogOfs(ofs, len, line) { str += `  [${ofs.toString(16).padStart(8, '0')} - ${(ofs+len-1).toString(16).padStart(8, '0')} | ${ofs.toString().padStart(8)} - ${(ofs+len-1).toString().padStart(8)}] ${line}`; }
+	function IPS()
+	{
+		i = 5; // skip over header
+		str += "IPS Patch Commands:\n";
+		while (i < sz)
+		{
+			let ofs = GetU24();
+			if (ofs == 0x454f46 && i >= sz - 3) // EOF marker
+			{
+				if (i != sz) { let ofs = GetU24(); str += `  Truncate Output Length: ${ofs} (0x${ofs.toString(16)})\n`; }
+				return;
+			}
+			let len = GetU16(); if (i > sz) { str += "  Invalid Patch: Unable to read length\n"; return; }
+			if (i + len > sz) { str += "  Invalid Patch: Length goes beyond file end\n"; return; }
+			if (len) { LogOfs(ofs, len, `Write ${len} (0x${len.toString(16)}) patch bytes:`); while (len--) { str += " "+GetU8().toString(16).padStart(2, '0'); } str += "\n"; continue; } // patch bytes
+			let rlelen = GetU16(), rlebyte = GetU8(); if (i > sz) { str += "  Invalid Patch: Unable to read RLE data\n"; return; }
+			LogOfs(ofs, rlelen, `Write ${rlelen} (0x${rlelen.toString(16)}) bytes with a repeating 0x${rlebyte.toString(16).padStart(2, '0')}\n`); // RLE
+		}
+		str += "  End of IPS patch file but End-Of-File (EOF) marker was missing\n";
+	}
+	function BPS()
+	{
+		i = 4; // skip over header
+		str += "BPS Patch Commands:\n";
+		var sourceLen = BPSGetVarLenInt(), targetLen = BPSGetVarLenInt(), metaLen = BPSGetVarLenInt(), ofs = 0, inpRelOfs = 0, outpRelOfs = 0, asIPS = 8;
+		if (i > sz) { str += "  Invalid Patch: Unable to read BPS header\n"; return; }
+		str += `  Source File Length: ${sourceLen} (0x${sourceLen.toString(16)})\n`;
+		str += `  Target File Length: ${targetLen} (0x${targetLen.toString(16)})\n`;
+		if (metaLen) { str += `  Meta Data Length: ${metaLen} (0x${metaLen.toString(16)})\n`; i += metaLen; } // skip over meta data
+		for (let cmd, len; ofs != targetLen; ofs += len)
+		{
+			cmd = BPSGetVarLenInt(), len = ((cmd >> 2) + 1);
+			if (i > sz || ofs + len > targetLen) { str += "  Invalid Patch: Unable to read command\n"; return; }
+			switch (cmd & 3)
+			{
+				case 0: // SourceRead
+					if (ofs + len > sourceLen) { str += "  Invalid Patch: Source Read beyond source length\n"; return; }
+					LogOfs(ofs, len, `Clone ${len} (0x${len.toString(16)}) bytes\n`);
+					break;
+				case 1: // TargetRead
+					if (i + len > sz) { str += "  Invalid Patch: TargetRead Length goes beyond file end\n"; return; }
+					LogOfs(ofs, len, `Write ${len} (0x${len.toString(16)}) patch bytes:`);
+					for (let l = len; l--;) str += " "+GetU8().toString(16).padStart(2, '0');
+					str += "\n";
+					asIPS = ((asIPS && ofs <= 0xFFFFFF && len <= 0xFFFF && (ofs != 0x454f46 || len != 1)) ? asIPS + 5 + len : 0); // TargetRead at offset 0x454f46 of length 1 at end would look like IPS EOF with a truncate
+					if (toIPS) { toIPS.push(((ofs >> 16) & 0xFF), ((ofs >> 8) & 0xFF), (ofs & 0xFF), ((len >> 8) & 0xFF), (len & 0xFF)); i -= len; for (let l = len; l--;) { toIPS.push(GetU8()); } }
+					break;
+				case 2: // SourceCopy
+					cmd = BPSGetVarLenInt();
+					if (i > sz || (inpRelOfs += (cmd >> 1) * ((cmd & 1) ? -1 : 1)) + len > sourceLen) { str += "  Invalid Patch: Unable to read source offset\n"; return; }
+					LogOfs(ofs, len, `Copy ${len} (0x${len.toString(16)}) bytes from source at ${inpRelOfs} (0x${inpRelOfs.toString(16)})\n`);
+					inpRelOfs += len, asIPS = 0;
+					break;
+				case 3: // TargetCopy
+					cmd = BPSGetVarLenInt();
+					if (i > sz || (outpRelOfs += (cmd >> 1) * ((cmd & 1) ? -1 : 1)) >= ofs) { str += "  Invalid Patch: Unable to read target offset\n"; return; }
+					LogOfs(ofs, len, `Repeat the ${len} (0x${len.toString(16)}) bytes in target existing at ${outpRelOfs} (0x${outpRelOfs.toString(16)})\n`);
+					outpRelOfs += len, asIPS = 0;
+					break;
+			}
+		}
+		if (asIPS) str += `  (This patch can be converted to a ${asIPS} byte size IPS file -> <a onclick="BPStoIPS(this)" href="javascript:">Download as IPS</a>)\n`;
+	}
+	let hdr = GetU24();
+	if      (hdr == 0x504154) IPS(); // IPS file
+	else if (hdr == 0x425053) BPS(); // BPS file
+	else str = "Unknown type of patch file (header is " + hdr + ")";
+	return str;
+}
+
+function BPStoIPS(a,b,c)
+{
+	var tr = a.parentElement.parentElement.parentElement.previousElementSibling, fname = tr.firstChild.innerText, arr = DecodeBase64(tr.dataset.str), ips = [ 0x50, 0x41, 0x54, 0x43, 0x48 /* "PATCH" */ ];
+	ParsePatch(arr, ips);
+	ips.push(0x45, 0x4F, 0x46 /* "EOF" */);
+	DownloadAs(ips, fname + ".IPS");
+}
+
+function View(td)
+{
+	var tr = td.parentElement, nextTr = tr.nextElementSibling, fname = tr.firstChild.innerText, arr = DecodeBase64(tr.dataset.str), str = '';
+	if (nextTr && nextTr.firstChild.colSpan == 100) { nextTr.remove(); return; } // close
+	if (fname.match(/\.(bps|ips)$/i))
+		str = ParsePatch(arr);
+	else
+	{
+		let binary = 0;
+		for (let c of arr) { if (c < 9 || c > 126) { binary = 1; break; } }
+		if (binary) { for (let i = 0; i != arr.length; i++) { str += (i ? ((i&31)?' ':'\n'+i.toString(16).padStart(4, '0')+': ') : '0000: ') + arr[i].toString(16).padStart(2, '0'); } }
+		else        { for (let c of arr) { str += String.fromCharCode(c); } }
+		str = Escape(str).replace(/\r/g, '<span class="lf"></span>').replace(/\n/g, '<span class="cr"></span>\n');
+	}
+	tr.insertAdjacentHTML('afterend', '<tr><td colspan="100%"><pre class="file">' + str + '</pre></td></tr>');
+}
+
+function Download(td)
+{
+	var tr = td.parentElement, fname = tr.firstChild.innerText, arr = DecodeBase64(tr.dataset.str);
+	DownloadAs(arr, fname);
+}
+
+function DownloadAs(arr, name)
+{
+	var a = document.createElement('a');
+	a.setAttribute('href', URL.createObjectURL(new Blob([new Uint8Array(arr)], { type: 'application/octet-stream' })));
+	a.setAttribute('download', name);
+	a.style.display = 'none';
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+}
+
+function DecodeBase64(str)
+{
+	for (var b=atob(str),l=b.length,r=new Uint8Array(l),i=0;i<l;i++)r[i]=b.charCodeAt(i);return r;
+}
+
+function Export(gameonly)
+{
+	for (var i = (game ? -1 : 0), xml = ''; i != (gameonly ? 0 : matches.length); i++)
+	{
+		let d = (i == -1 ? game : matches[i]), name = d[0], comment = d[1], comment_dosc = d[2], links = d[3], files = d[4], dosc = d[5], ext = d[6], unverified = d[7];
+		let name_parts = name.match(/^(.*?) \((\d\d\d\d)\) \(([^\)]+)\)(?: \(([^\)]+)\)|)$/), parent
+		let printname = (name_parts ? name_parts[1] : name).replace(/ - /, ": ").replace(/^(.*?), (The|An|A)/, '$2 $1');
+		for (const f of files) { if (f[0].match(/\.parent$/i)) { parent = f[0].slice(0, -7); } }
+
+		xml += `\t<game name="${Escape(name, 1)}.${ext ? ext : 'dosz'}">\n\t\t<description>${Escape(printname)}</description>\n`;
+		if (name_parts) xml += `\t\t<year>${name_parts[2]}</year>\n`;
+		if (name_parts) xml += `\t\t<developer>${Escape(name_parts[3])}</developer>\n`;
+		if (name_parts && name_parts[4]) xml += `\t\t<variant>${Escape(name_parts[4])}</variant>\n`;
+		if (parent) xml += `\t\t<parent>${Escape(parent)}</parent>\n`;
+		for (let cmt = 0, str; cmt != 2; cmt++)
+		{
+			if (!(str = (cmt ? comment_dosc : comment))) continue;
+			if (str.match(/\n/)) str = "\n\t\t\t" + str.replace(/\n/g, "\n\t\t\t") + "\n\t\t";
+			xml += `\t\t<${cmt ? 'comment_dosc' : 'comment'}>${Escape(str)}</${cmt ? 'comment_dosc' : 'comment'}>\n`;
+		}
+
+		if (links)
+			for (const l of links)
+				xml += `\t\t<link type="${Escape(l[0], 1)}"${l[2] ? ` name="${Escape(l[2], 1)}"` : ''}>${Escape(l[1])}</link>\n`;
+
+		for (const f of files)
+		{
+			const fname = f[0], fsize = f[1], fyear = f[2], fmon = f[3], fday = f[4], fhour = f[5], fmin = f[6], fsec = f[7], fcrc = f[8], fmd5 = f[9], fsha1 = f[10], fdata = f[11], fmeta = f[12];
+			xml += `\t\t<rom name="${Escape(fname, 1)}" size="${fsize}" crc="${fcrc}" md5="${fmd5}" sha1="${fsha1}"${fmon ? ` date="${(new Date(Date.UTC(1900+fyear, fmon-1, fday, fhour, fmin, fsec))).toISOString().substr(0, 19).replace('T', ' ')}"` : ''}${fdata? ` data="${fdata}"` : ''}${fmeta ? '' : '/'}>\n`;
+			if (fmeta)
+				for (let m = Escape(fmeta, 1).split("#"), t = m[0], i = 1; i < m.length;)
+					if      (t == 'S') { xml += `\t\t\t<source type="${m[i+0]}" frames="${m[i+1]}"${m[i+2] ? ` pregap="${m[i+2]}"` : ''}${m[i+3] ? ` omitted_pregap="${m[i+3]}"` : ''} duration="${m[i+4]}"${m[i+5] ? ` size="${m[i+5]}" crc="${m[i+6]}" md5="${m[i+7]}" sha1="${m[i+8]}"` : ''}${m[i+9] ? ` in_zeros="${m[i+9]}"` : ''}${m[i+10] ? ` out_zeros="${m[i+10]}"` : ''}${m[i+11] ? ` quality="${m[i+11]}"` : ''}${m[i+12] ? ` non_silence_pregap="${m[i+12]}"` : ''}/>\n`; i += 13; }
+					else if (t == 'T') { xml += `\t\t\t<track number="${m[i+0]}" type="${m[i+1]}" frames="${m[i+2]}"${m[i+3] ? ` pregap="${m[i+3]}"` : ''}${m[i+4] ? ` omitted_pregap="${m[i+4]}"` : ''} duration="${m[i+5]}" size="${m[i+6]}" crc="${m[i+7]}" md5="${m[i+8]}" sha1="${m[i+9]}"${m[i+10] ? ` in_zeros="${m[i+10]}"` : ''}${m[i+11] ? ` out_zeros="${m[i+11]}"` : ''}${m[i+12] ? ` trimmed_crc="${m[i+12]}"` : ''}/>\n`; i += 13; }
+					else if (t == 'P') { xml += `\t\t\t<patch data="${m[i+0]}" size="${m[i+1]}" crc="${m[i+2]}" md5="${m[i+3]}" sha1="${m[i+4]}"/>\n`; i += 5; }
+			if (fmeta) xml += `\t\t</rom>\n`;
+		}
+		xml += `\t</game>\n`;
+	}
+	xml = `<?xml version="1.0"?>\n<!DOCTYPE datafile PUBLIC "-//Logiqx//DTD ROM Management Datafile//EN" "http://www.logiqx.com/Dats/datafile.dtd">\n<datafile>\n${xml}</datafile>\n`;
+	try { navigator.clipboard.write([new ClipboardItem({['text/plain']:xml})]); alert("Copied XML DAT to clipboard"); } catch {}
+}
+</script>
+</body>
+</html>
