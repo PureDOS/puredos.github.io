@@ -123,7 +123,7 @@ document.OnDATData = function(data)
 
 	if (game)
 	{
-		let d = game, name = d[0], comment = d[1], comment_dosc = d[2], links = d[3], files = d[4], dosc = d[5], ext = d[6], unverified = d[7], nameUp = name.toUpperCase();
+		let d = game, name = d[0], comment = d[1], comment_dosc = d[2], links = d[3], files = d[4], dosc = d[5], opt = d[6], ext = opt?.e, unverified = opt?.u, children = opt?.c;
 		res += '<table style="min-width:1050px;margin-bottom:10px"><tr><td><center><b>' + Escape(name) + '</b></center</td><td class="btnbox" onclick="Export(1)" title="Click to copy as XML DAT">&#x2343;</td></tr></table>';
 
 		let TR_TD_FoldButton = '<tr><td onclick="Toggle(this)"><button>-</button> ';
@@ -136,8 +136,8 @@ document.OnDATData = function(data)
 		res += '<tr><th width="10%">Name</th><td>'+Escape(printname)+'</td></tr>';
 		if (name_parts) res += '<tr><th>Year</th><td>'+name_parts[2]+'</td></tr>';
 		if (name_parts) res += '<tr><th>Developer</th><td>'+Escape(name_parts[3])+'</td></tr>';
-		if (name_parts && name_parts[4]) res += '<tr><th>Variant</th><td>'+Escape(name_parts[4])+'</td></tr>';
-		if (parent) res += '<tr><th>Parent</th><td><a href="?/'+Escape(parent,1)+'">'+Escape(parent)+'</a></td></tr>';
+		if (name_parts?.[4]) res += '<tr><th>Variant</th><td>'+Escape(name_parts[4])+'</td></tr>';
+		if (parent) res += '<tr><th>Parent</th><td><a href="?/'+EncodeQry(parent)+'">'+Escape(parent)+'</a></td></tr>';
 		if (savename) res += '<tr><th>Savename</th><td>'+Escape(savename)+'</td></tr>';
 		if (comment) res += '<tr><th colspan="2">Description</th></tr><tr><td colspan="2" style="white-space:pre-wrap;width:1000px">'+Escape(comment)+'</td></tr>';
 		if (comment_dosc) res += '<tr><th colspan="2">DOSC Description</th></tr><tr><td colspan="2" style="white-space:pre-wrap;width:1000px">'+Escape(comment_dosc)+'</td></tr>';
@@ -185,6 +185,15 @@ document.OnDATData = function(data)
 					res += '</table></td></tr>';
 				}
 			}
+			res += '</table></td></tr></table>';
+		}
+
+		if (children)
+		{
+			res += '<table style="min-width:1050px;margin-bottom:10px">';
+			res += TR_TD_FoldButton + 'Children (' + children.length + ')</td></tr><tr><td class="indent"><table>'
+			res += '<tr><th>Child</th></tr>';
+			for (const c of children) res += '<tr><td><a href="?/'+EncodeQry(c)+'">'+Escape(c)+'</a></tr>';
 			res += '</table></td></tr></table>';
 		}
 
@@ -344,7 +353,7 @@ function Export(gameonly)
 		xml += `\t<game name="${Escape(name, 1)}.${ext ? ext : 'dosz'}">\n\t\t<description>${Escape(printname)}</description>\n`;
 		if (name_parts) xml += `\t\t<year>${name_parts[2]}</year>\n`;
 		if (name_parts) xml += `\t\t<developer>${Escape(name_parts[3])}</developer>\n`;
-		if (name_parts && name_parts[4]) xml += `\t\t<variant>${Escape(name_parts[4])}</variant>\n`;
+		if (name_parts?.[4]) xml += `\t\t<variant>${Escape(name_parts[4])}</variant>\n`;
 		if (parent) xml += `\t\t<parent>${Escape(parent)}</parent>\n`;
 		for (let cmt = 0, str; cmt != 2; cmt++)
 		{

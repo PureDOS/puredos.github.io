@@ -93,7 +93,7 @@ foreach my $m (@files)
 				}
 				elsif ($ln =~ /^<\/game>$/)
 				{
-					if (!@filearr) { print STDERR "Warning: No file in '$ingame'\n"; next; }
+					if (!@filearr) { print STDERR "Error: No file in '$ingame'\n"; next; }
 					#my $filars = join(",", sort { $a =~ s/(\d+)/substr("0000000".$1, -8)/ge; $b =~ s/(\d+)/substr("0000000".$1, -8)/ge; "\L$a" cmp "\L$b" } @filearr); # numerically sort numbers in file names
 					my $filars = join(",", @filearr); # keep order as is in DAT
 					$filars =~ s/\\/\//g;$filars=~s/\&amp;/\&/g;$filars=~s/\&\#(\d+);/pack("C",$1)/eg;$filars=~s/\&lt;/</g;$filars=~s/\&quot;/\"/g;$filars=~s/\&gt;/>/g;$filars=~s/\&apos;/\'/g;
@@ -113,6 +113,7 @@ foreach my $m (@files)
 
 					$g->{files} = $filars;
 					$g->{links} = (@linkarr ? join(",", @linkarr) : 0);
+					if ($g->{parent}) { die "    Parent '$g->{parent}' of '$ingame' doesn't end with '.dosz'\n" unless $g->{parent} =~ s/\.dosz$//; push(@{$gamedb{$g->{parent}}->{children}}, $ingame); }
 					($ingame, $g, @filearr, @linkarr) = (0);
 				}
 				elsif ($ln =~ /^<(description|year|comment|comment_dosc|developer|parent|variant)>([^<]+)<\/\1>$/)
@@ -144,12 +145,11 @@ foreach my $m (@files)
 				if (index($ingame, "\"")   != -1) { die "    Double quote in name '$ingame'\n"; }
 				if (index($ingame, "\\")   != -1) { die "    Backslash in name '$ingame'\n"; }
 				if (index($ingame, "/")    != -1) { die "    Slash in name '$ingame'\n"; }
-				$g = {};
+				$ingame=~s/\&amp;/\&/g;$ingame=~s/\&\#(\d+);/pack("C",$1)/eg;$ingame=~s/\&lt;/</g;$ingame=~s/\&quot;/\"/g;$ingame=~s/\&gt;/>/g;$ingame=~s/\&apos;/\'/g;
+				$g = $gamedb{$ingame} || ($gamedb{$ingame} = {});
+				if ($g->{files}) { die "    Duplicate game '$ingame'!\n"; }
 				if ($2 ne "dosz") { $g->{ext} = $2; }
 				if ($unverified) { $g->{unverified} = 1; }
-				$ingame=~s/\&amp;/\&/g;$ingame=~s/\&\#(\d+);/pack("C",$1)/eg;$ingame=~s/\&lt;/</g;$ingame=~s/\&quot;/\"/g;$ingame=~s/\&gt;/>/g;$ingame=~s/\&apos;/\'/g;
-				if ($gamedb{$ingame}) { die "    Duplicate game '$ingame'!\n"; }
-				$gamedb{$ingame} = $g;
 			}
 			elsif ($inheader == 1)
 			{
@@ -266,13 +266,15 @@ for (my ($i, $ilast, $outlen, $prevgame, $lastsplit, $nextrange, @out) = (0, @ga
 	$prevgame = $ingame;
 
 	my $g = $gamedb{$ingame};
-	my ($links, $dosc, $comment, $comment_dosc, $ext, $unverified) = ($g->{links}, $g->{dosc}, $g->{comment}, $g->{comment_dosc}, $g->{ext}, $g->{unverified});
+	my ($files, $links, $dosc, $comment, $comment_dosc, $ext, $children, $unverified) = ($g->{files}, $g->{links}, $g->{dosc}, $g->{comment}, $g->{comment_dosc}, $g->{ext}, $g->{children}, $g->{unverified});
+	if (!$files) { print STDERR "Error: Game '$ingame' has no files (maybe a lone DOSC or a referenced parent that doesn't exist? DOSC: ".($dosc ? "Yes" : "No")." - Children: ".($children ? scalar(@{$children}) : '0').")\n"; next; }
 	while ($comment      && $comment      !~ /(^|\n)[^\t]/) { $comment      =~ s/(^|\n)\t/\1/gs; } #evenly de-indent tabs
 	while ($comment_dosc && $comment_dosc !~ /(^|\n)[^\t]/) { $comment_dosc =~ s/(^|\n)\t/\1/gs; } #evenly de-indent tabs
 	$comment      =~ s/\r//g; $comment      =~ s/[\n\t]+$//; $comment      =~ s/\\/\\\\/g; $comment      =~ s/\n/\\n/g; $comment      =~ s/\t/\\t/g; $comment      =~ s/\"/\\\"/g;
 	$comment_dosc =~ s/\r//g; $comment_dosc =~ s/[\n\t]+$//; $comment_dosc =~ s/\\/\\\\/g; $comment_dosc =~ s/\n/\\n/g; $comment_dosc =~ s/\t/\\t/g; $comment_dosc =~ s/\"/\\\"/g;
 
-	my $line = "[\"$ingame\",".($comment ? "\"$comment\"":"0").",".($comment_dosc?"\"$comment_dosc\"":"0").",".($links?"[$links]":"0").",[".$g->{files}."],".($dosc?"[$dosc]":"0").($ext?',"'.$ext.'"':'').($unverified?($ext?'':',0').',1':'')."],\n";
+	my $line = "[\"$ingame\",".($comment ? "\"$comment\"":"0").",".($comment_dosc?"\"$comment_dosc\"":"0").",".($links?"[$links]":"0").",[".$files."],".($dosc?"[$dosc]":"0")
+		.(($children || $ext || $unverified) ? ',{'.($children ? "c:[\"".join("\",\"", @{$children})."\"]," : '').($ext ? "e:\"$ext\"," : '').($unverified ? "u:1" : '').'}' : '')."],\n";
 	push(@out, $line);
 	$outlen += length($line);
 
@@ -294,7 +296,7 @@ for (my ($i, $ilast, $outlen, $prevgame, $lastsplit, $nextrange, @out) = (0, @ga
 }
 print "Building JS data set done (".(Time::HiRes::tv_interval($output_start)*1000)."ms)\n\n";
 
-print "Creating index.html from dat.html ...\n";
+print "Creating '$outdatdir/index.html' from dat.html ...\n";
 my $index_start = [Time::HiRes::gettimeofday()];
 open(IN, "<:raw", "dat.html");
 open(OUT, ">:raw", "$outdatdir/index.html");
