@@ -6,7 +6,6 @@
 #--------------------------------------------#
 
 use strict;
-use Encode;
 use Archive::Zip;
 use LWP::UserAgent;
 use Time::HiRes;
@@ -102,7 +101,7 @@ foreach my $m (@files)
 
 					if ($ingame =~ /^(The|An|A) /i) { print STDERR "Warning: Entry '$ingame' starts with a common article '$1' (should be '... ,$1')\n"; }
 					if ($ingame =~ /:|~/) { print STDERR "Warning: Entry '$ingame' contains a colon\n"; }
-					my $expectdesc = $ingame; $expectdesc =~ s/ - /\: /; $expectdesc =~ s/^(.*?), (The|An|A)/\2 \1/;
+					my $expectdesc = $ingame; $expectdesc =~ s/ - /\: /; $expectdesc =~ s/^(.*?), (The|An|A)/\2 \1/; $expectdesc =~ s/\) \[([^\]]+)\]$/\)/;
 					my $expectname = $g->{description}.' ('.$g->{year}.') ('.$g->{developer}.')'.($g->{variant}?' ('.$g->{variant}.')' : '');
 					if ($expectdesc ne $expectname && !$unverified) { print STDERR "Warning: Game name '$expectdesc' doesn't match 'DESCRIPTION (YEAR) (DEVELOPER) (VARIANT)' template\nWarning: expected  '$expectname')\n"; }
 

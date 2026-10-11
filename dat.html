@@ -127,7 +127,7 @@ document.OnDATData = function(data)
 		res += '<table style="min-width:1050px;margin-bottom:10px"><tr><td><center><b>' + Escape(name) + '</b></center</td><td class="btnbox" onclick="Export(1)" title="Click to copy as XML DAT">&#x2343;</td></tr></table>';
 
 		let TR_TD_FoldButton = '<tr><td onclick="Toggle(this)"><button>-</button> ';
-		let name_parts = name.match(/^(.*?) \((\d\d\d\d)\) \(([^\)]+)\)(?: \(([^\)]+)\)|)$/), parent, savename
+		let name_parts = name.match(/^(.*?) \((\d\d\d\d)\) \(([^\)]+)\)(?: \(([^\)]+)\)|)(?: \[([^\]]+)\]|)$/), parent, savename
 		let printname = (name_parts ? name_parts[1] : name).replace(/ - /, ": ").replace(/^(.*?), (The|An|A)/, '$2 $1');
 		for (const f of files) { if (f[0].match(/\.parent$/i)) { parent = f[0].slice(0, -12); } else if (f[0].match(/\.savename$/i)) { savename = f[0].slice(0, -9); } }
 		res += '<table style="min-width:1050px;margin-bottom:10px">';
@@ -139,6 +139,7 @@ document.OnDATData = function(data)
 		if (name_parts?.[4]) res += '<tr><th>Variant</th><td>'+Escape(name_parts[4])+'</td></tr>';
 		if (parent) res += '<tr><th>Parent</th><td><a href="?/'+EncodeQry(parent)+'">'+Escape(parent)+'</a></td></tr>';
 		if (savename) res += '<tr><th>Savename</th><td>'+Escape(savename)+'</td></tr>';
+		if (name_parts?.[5]) res += '<tr><th colspan="2" class="unverified">'+name_parts[5]+'</th></tr>';
 		if (comment) res += '<tr><th colspan="2">Description</th></tr><tr><td colspan="2" style="white-space:pre-wrap;width:1000px">'+Escape(comment)+'</td></tr>';
 		if (comment_dosc) res += '<tr><th colspan="2">DOSC Description</th></tr><tr><td colspan="2" style="white-space:pre-wrap;width:1000px">'+Escape(comment_dosc)+'</td></tr>';
 		res += '</table></td></tr></table>';
