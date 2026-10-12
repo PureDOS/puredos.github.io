@@ -217,7 +217,7 @@ document.OnDATData = function(data)
 	if (!matches.length) gebi('cpy').style.display = 'none';
 };
 
-function ParsePatch(arr, toIPS)
+function ParsePatch(arr, fname, toIPS)
 {
 	var i = 0, sz = arr.length, str = '';
 	function GetU8() { return arr[i++]|0; }
@@ -288,9 +288,23 @@ function ParsePatch(arr, toIPS)
 		}
 		if (asIPS) str += `  (This patch can be converted to a ${asIPS} byte size IPS file -> <a onclick="BPStoIPS(this)" href="javascript:">Download as IPS</a>)\n`;
 	}
+	function XOR()
+	{
+		i = 4; // skip over header
+		str += "XOR Patch Commands:\n";
+		var basepath = '', filesize = 0, b, baseofs = 0, targsz = 0;
+		for (;;) { b = GetU8(); if (!b) break; basepath += String.fromCharCode(b); } // read source path
+		for (let num = 0;;) { b = GetU8(); baseofs |= (b & 0x7F) << (7 * (num++)); if (b < 0x80) break; }
+		for (let num = 0;;) { b = GetU8(); targsz  |= (b & 0x7F) << (7 * (num++)); if (b < 0x80) break; }
+		if (i > sz || baseofs > 0xFFFFFFFF || targsz > 0xFFFFFFFF) { str += "  Invalid Patch: Unable to read XOR Patch header\n"; return; }
+		str += `  Generate file ${fname.slice(fname.lastIndexOf("/") + 1, -4)} of size ${targsz}, ${(i == sz && baseofs == 0) ? 'copy' : 'fill with'} data from ${basepath}${baseofs ? ` starting at offset ${baseofs}` : ''}\n`;
+		for (let start = i; i < sz;)
+			if (b = arr[i++]) str += `     ${(i-start).toString(16).padStart(4, '0')}: XOR byte with ${b.toString(16).padStart(2, '0')}\n`;
+	}
 	let hdr = GetU24();
 	if      (hdr == 0x504154) IPS(); // IPS file
 	else if (hdr == 0x425053) BPS(); // BPS file
+	else if (hdr == 0x584F52) XOR(); // XOR file
 	else str = "Unknown type of patch file (header is " + hdr + ")";
 	return str;
 }
@@ -298,7 +312,7 @@ function ParsePatch(arr, toIPS)
 function BPStoIPS(a,b,c)
 {
 	var tr = a.parentElement.parentElement.parentElement.previousElementSibling, fname = tr.firstChild.innerText, arr = DecodeBase64(tr.dataset.str), ips = [ 0x50, 0x41, 0x54, 0x43, 0x48 /* "PATCH" */ ];
-	ParsePatch(arr, ips);
+	ParsePatch(arr, fname, ips);
 	ips.push(0x45, 0x4F, 0x46 /* "EOF" */);
 	DownloadAs(ips, fname + ".IPS");
 }
@@ -307,15 +321,15 @@ function View(td)
 {
 	var tr = td.parentElement, nextTr = tr.nextElementSibling, fname = tr.firstChild.innerText, arr = DecodeBase64(tr.dataset.str), str = '';
 	if (nextTr && nextTr.firstChild.colSpan == 100) { nextTr.remove(); return; } // close
-	if (fname.match(/\.(bps|ips)$/i))
-		str = ParsePatch(arr);
+	if (fname.match(/\.(bps|ips|xor)$/i))
+		str = ParsePatch(arr, fname);
 	else
 	{
 		let binary = 0;
 		for (let c of arr) { if (c < 9 || c > 126) { binary = 1; break; } }
 		if (binary) { for (let i = 0; i != arr.length; i++) { str += (i ? ((i&31)?' ':'\n'+i.toString(16).padStart(4, '0')+': ') : '0000: ') + arr[i].toString(16).padStart(2, '0'); } }
 		else        { for (let c of arr) { str += String.fromCharCode(c); } }
-		str = Escape(str).replace(/\r/g, '<span class="lf"></span>').replace(/\n/g, '<span class="cr"></span>\n');
+		if (!binary) str = Escape(str).replace(/\r/g, '<span class="lf"></span>').replace(/\n/g, '<span class="cr"></span>\n');
 	}
 	tr.insertAdjacentHTML('afterend', '<tr><td colspan="100%"><pre class="file">' + str + '</pre></td></tr>');
 }
